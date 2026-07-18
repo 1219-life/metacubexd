@@ -1,0 +1,49 @@
+name: Sync upstream
+
+on:
+  schedule:
+    # Every day at 02:00 Asia/Shanghai (18:00 UTC).
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Merge the upstream default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          UPSTREAM_URL: https://github.com/MetaCubeX/metacubexd.git
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          upstream_branch="$(
+            git ls-remote --symref "$UPSTREAM_URL" HEAD |
+              awk '/^ref:/ { sub("refs/heads/", "", $2); print $2; exit }'
+          )"
+
+          if [ -z "$upstream_branch" ]; then
+            echo "Unable to determine the upstream default branch." >&2
+            exit 1
+          fi
+
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch --no-tags upstream "$upstream_branch"
+          git merge --no-edit "upstream/$upstream_branch"
+          git push origin "HEAD:$DEFAULT_BRANCH"
